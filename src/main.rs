@@ -136,9 +136,16 @@ CREATE TABLE IF NOT EXISTS session_times (
             let session_name = record
                 .session_name
                 .expect("Primary key should always exist");
-            let total_attached_time = record.total_attached_time.unwrap_or(0.0);
-            println!("Session: {} - {}", session_name, total_attached_time);
+            let total_attached_time = record.total_attached_time.unwrap_or(0.0) / 60.0 / 60.0;
+            println!("Session: {} - {} h", session_name, total_attached_time);
         }
+        Ok(())
+    }
+
+    async fn clear_all_sessions(&self) -> Result<()> {
+        sqlx::query!("UPDATE session_times SET total_attached_time = 0")
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 }
@@ -155,7 +162,8 @@ async fn main() -> Result<()> {
         fs::create_dir_all(&config_dir).await?;
     }
 
-    let db_url: String = "sqlite://".to_owned() + config_dir.to_str().expect("Config dir should exist") + "/tmux.db";
+    let db_url: String =
+        "sqlite://".to_owned() + config_dir.to_str().expect("Config dir should exist") + "/tmux.db";
     let tracker = SessionTracker::new(db_url.as_str()).await?;
 
     // Parse CLI args
@@ -164,6 +172,7 @@ async fn main() -> Result<()> {
 
     match action.as_str() {
         "detach" => tracker.detach_from_all_sessions().await?,
+        "reset" => tracker.clear_all_sessions().await?,
         "getall" => tracker.print_all_sessions_total_attached_time().await?,
         _ => with_session_name_branch(args, tracker).await?,
     }
