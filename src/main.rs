@@ -1,9 +1,12 @@
 use anyhow::Result;
+use dirs;
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use std::{
     env,
+    path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::fs;
 
 const USAGE_MESSAGE: &str =
     "Usage: tmux-time-tracker <action: attach/detach/gets/geth> [session_name]";
@@ -123,13 +126,37 @@ CREATE TABLE IF NOT EXISTS session_times (
             self.get_total_session_time_in_seconds(session_name).await?;
         Ok(total_attached_time_in_seconds / 60.0 / 60.0)
     }
+
+    async fn print_all_sessions_total_attached_time(&self) -> Result<()> {
+        let records = sqlx::query!("SELECT session_name, total_attached_time FROM session_times")
+            .fetch_all(&self.pool)
+            .await?;
+
+        for record in records {
+            let session_name = record
+                .session_name
+                .expect("Primary key should always exist");
+            let total_attached_time = record.total_attached_time.unwrap_or(0.0);
+            println!("Session: {} - {}", session_name, total_attached_time);
+        }
+        Ok(())
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
-    let db_url: &str = &env::var("DATABASE_URL")?;
-    let tracker = SessionTracker::new(db_url).await?;
+    // The env var is used for the dev database
+    let home_dir = dirs::home_dir().expect("Home directory should be available");
+    let mut config_dir = PathBuf::from(home_dir);
+    config_dir.push(".config/tmux-time-tracker");
+
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir).await?;
+    }
+
+    let db_url: String = "sqlite://".to_owned() + config_dir.to_str().expect("Config dir should exist") + "/tmux.db";
+    let tracker = SessionTracker::new(db_url.as_str()).await?;
 
     // Parse CLI args
     let args: Vec<String> = env::args().collect();
@@ -137,6 +164,7 @@ async fn main() -> Result<()> {
 
     match action.as_str() {
         "detach" => tracker.detach_from_all_sessions().await?,
+        "getall" => tracker.print_all_sessions_total_attached_time().await?,
         _ => with_session_name_branch(args, tracker).await?,
     }
 
