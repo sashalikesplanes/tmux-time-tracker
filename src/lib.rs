@@ -5,10 +5,12 @@
 use anyhow::{anyhow, bail, Result};
 use dirs;
 use sqlx::types::chrono;
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, process};
 use tokio::fs;
 pub mod session_tracker;
 pub use session_tracker::SessionTracker;
+
+const MESSAGE_TIMEOUT: u32 = 1_000;
 
 /// Executes the program
 pub async fn run() -> Result<()> {
@@ -19,28 +21,56 @@ pub async fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let tracker = SessionTracker::new(&home_path).await?;
 
-    const USAGE_MESSAGE: &str =
-        "Usage: tmux-time-tracker <action: attach/detach/gets/geth> [session_name]";
+    let action = args.get(1).ok_or(anyhow!("Missing first argument"))?;
+    let session = args.get(2).ok_or(anyhow!("Missing second argument"));
 
-    let action = args.get(1).ok_or(anyhow!(USAGE_MESSAGE))?;
-    let session = args.get(2).ok_or(anyhow!(USAGE_MESSAGE));
     match (action.as_str(), session) {
-        ("detach", _) => tracker.detach_from_all_sessions().await?,
-        ("attach", Ok(s)) => tracker.attach_to_session(s.as_str()).await?,
-        ("gets", Ok(s)) => println!(
-            "Total Attached Time: {} s",
-            tracker
-                .get_today_session_time_in_seconds(s.as_str())
-                .await?
-        ),
-        ("geth", Ok(s)) => println!(
-            "Total Attached Time: {} h",
-            tracker.get_today_session_time_in_hours(s.as_str()).await?
-        ),
-        _ => bail!(USAGE_MESSAGE),
+        ("detached", _) => {
+            log::info!("START - detached");
+            // Nothing to display
+            tracker.detach_from_all_sessions().await?;
+        }
+        ("attached", Ok(session)) => {
+            log::info!("START - attached");
+            attach_to_session_and_display_session_time(&tracker, session).await?;
+        }
+        ("changed", Ok(session)) => {
+            log::info!("START - changed");
+            tracker.detach_from_all_sessions().await?;
+            attach_to_session_and_display_session_time(&tracker, session).await?;
+        }
+        _ => bail!("Could not pattern match on first and second arg"),
     }
 
     log::info!("tmux-time-tracker ran succesfully for {:?}", action);
+
+    Ok(())
+}
+
+async fn attach_to_session_and_display_session_time(
+    tracker: &SessionTracker,
+    session: &str,
+) -> Result<()> {
+    tracker.attach_to_session(session).await?;
+
+    let session_time = tracker.get_today_session_time_in_hours(session).await?;
+    display_tmux_msg(
+        &format!("Attached to: {} today for {}h", session, session_time),
+        MESSAGE_TIMEOUT,
+    )?;
+
+    Ok(())
+}
+
+fn display_tmux_msg(msg: &str, timeout: u32) -> Result<()> {
+    process::Command::new("zsh")
+        .arg("-c")
+        .arg(format!(r#"tmux display-message -d {} "{}" "#, timeout, msg))
+        .output()
+        .or_else(|_| {
+            bail!("Failed to run tmux");
+        })?;
+
     Ok(())
 }
 

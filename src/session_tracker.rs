@@ -70,9 +70,7 @@ impl SessionTracker {
         .await?;
 
         // Set the current attached times to NULL
-        sqlx::query!("UPDATE session_times SET last_attached_time = NULL WHERE last_attached_time IS NOT NULL")
-            .execute(&mut tx)
-            .await?;
+        sqlx::query!("UPDATE session_times SET last_attached_time = NULL WHERE last_attached_time IS NOT NULL") .execute(&mut tx) .await?;
 
         tx.commit().await?;
 
