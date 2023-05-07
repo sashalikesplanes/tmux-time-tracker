@@ -1,15 +1,21 @@
-use std::time;
+//! # session_tracker
+//!
+//! Provides a SessionTracker struct which provides
+//! access to a sqlite database along with methods
+//! for manipulating the database
 
+use std::time;
 use anyhow::Result;
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 
+/// A Struct holding a connection pool for a Sqlite db
 pub struct SessionTracker {
     pool: sqlx::SqlitePool,
 }
 
 impl SessionTracker {
+    /// Setups the database connection, and creates the database if it does not exist
     pub async fn new(db_url: &str) -> Result<Self> {
-        // Setup DB connection
         if !Sqlite::database_exists(db_url).await.unwrap_or(false) {
             Sqlite::create_database(db_url).await?
         }
@@ -19,6 +25,7 @@ impl SessionTracker {
         Ok(tracker)
     }
 
+    /// Run the necessary migrations to ensure the db is setup
     async fn create_table_if_not_exists(&self) -> Result<()> {
         // Create the database if it doesn't exist
         sqlx::query!(
@@ -36,6 +43,7 @@ CREATE TABLE IF NOT EXISTS session_times (
         Ok(())
     }
 
+    /// Create a session record by name if it does not exist
     async fn create_session_if_not_exists(&self, session_name: &str) -> Result<()> {
         let record = sqlx::query!(
             "SELECT session_name FROM session_times WHERE session_name = ?",
@@ -58,6 +66,7 @@ CREATE TABLE IF NOT EXISTS session_times (
         }
     }
 
+    /// Stores the attachement to a session in the db
     pub async fn attach_to_session(&self, session_name: &str) -> Result<()> {
         self.create_session_if_not_exists(session_name).await?;
 
@@ -73,6 +82,8 @@ CREATE TABLE IF NOT EXISTS session_times (
         Ok(())
     }
 
+    /// Stores the detachment from all sessions in the db.
+    /// Also updates the total time that each session has been attached for
     pub async fn detach_from_all_sessions(&self) -> Result<()> {
         let records = sqlx::query!(
             "SELECT session_name, total_attached_time, last_attached_time
@@ -105,6 +116,7 @@ CREATE TABLE IF NOT EXISTS session_times (
         Ok(())
     }
 
+    /// Gets the total time in seconds that the session has been attached to
     pub async fn get_total_session_time_in_seconds(&self, session_name: &str) -> Result<f64> {
         self.create_session_if_not_exists(session_name).await?;
 
@@ -118,12 +130,14 @@ CREATE TABLE IF NOT EXISTS session_times (
         Ok(record.total_attached_time.unwrap_or(0.0))
     }
 
+    /// Gets the total time in hours that the session has been attached to
     pub async fn get_total_session_time_in_hours(&self, session_name: &str) -> Result<f64> {
         let total_attached_time_in_seconds =
             self.get_total_session_time_in_seconds(session_name).await?;
         Ok(total_attached_time_in_seconds / 60.0 / 60.0)
     }
 
+    /// Gets the total time in seconds that all sessions have been attached to
     pub async fn print_all_sessions_total_attached_time(&self) -> Result<()> {
         let records = sqlx::query!("SELECT session_name, total_attached_time FROM session_times")
             .fetch_all(&self.pool)
@@ -139,6 +153,7 @@ CREATE TABLE IF NOT EXISTS session_times (
         Ok(())
     }
 
+    /// Resets the total time that all sessions have been attached to
     pub async fn clear_all_sessions(&self) -> Result<()> {
         sqlx::query!("UPDATE session_times SET total_attached_time = 0")
             .execute(&self.pool)

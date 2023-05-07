@@ -1,10 +1,25 @@
+//! # tmux_time_tracker
+//!
+//! A CLI program meant to hook into Tmux
+//! Allows for tracking the time spent attached to Tmux session
 use anyhow::{anyhow, bail, Result};
 use dirs;
-use session_tracker::SessionTracker;
 use std::{env, path::PathBuf};
 use tokio::fs;
-mod session_tracker;
+pub mod session_tracker;
+pub use session_tracker::SessionTracker;
 
+/// Represents all valid actions with which the program can get invoked
+enum Actions {
+    Detach,
+    Reset,
+    GetAll,
+    Attach(String),
+    Gets(String), // get seconds
+    Geth(String), // get hours
+}
+
+/// Executes the program
 pub async fn run() -> Result<()> {
     // Parse CLI args
     let args: Vec<String> = env::args().collect();
@@ -33,7 +48,8 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 
-/** Prepares the dir for storing the db file and provides the URL to it */
+/// Ensures that the db storage location is available
+/// Returns the db connection URL
 async fn get_db_url() -> Result<String> {
     // The env var is used for the dev database
     let home_dir = dirs::home_dir().expect("Home directory should be available");
@@ -47,18 +63,12 @@ async fn get_db_url() -> Result<String> {
     Ok("sqlite://".to_owned() + config_dir.to_str().expect("Config dir should exist") + "/tmux.db")
 }
 
-/** Enum representing all the ways in which the program can get called */
-enum Actions {
-    Detach,
-    Reset,
-    GetAll,
-    Attach(String),
-    Gets(String), // get seconds
-    Geth(String), // get hours
-}
 
 impl Actions {
-    /** Determine the action based on CLI args */
+    /// Determines the current Action based on CLI arguments
+    ///
+    /// # Errors
+    /// - Anyhow Error if wrong CLI arguments provided
     pub fn new(args: &[String]) -> Result<Self> {
         const USAGE_MESSAGE: &str =
             "Usage: tmux-time-tracker <action: attach/detach/gets/geth> [session_name]";
