@@ -32,12 +32,12 @@ pub async fn run() -> Result<()> {
         Actions::Gets(s) => println!(
             "Total Attached Time: {} s",
             tracker
-                .get_total_session_time_in_seconds(s.as_str())
+                .get_today_session_time_in_seconds(s.as_str())
                 .await?
         ),
         Actions::Geth(s) => println!(
             "Total Attached Time: {} h",
-            tracker.get_total_session_time_in_hours(s.as_str()).await?
+            tracker.get_today_session_time_in_hours(s.as_str()).await?
         ),
     }
 
