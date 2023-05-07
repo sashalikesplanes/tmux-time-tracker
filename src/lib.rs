@@ -12,8 +12,6 @@ pub use session_tracker::SessionTracker;
 /// Represents all valid actions with which the program can get invoked
 enum Actions {
     Detach,
-    Reset,
-    GetAll,
     Attach(String),
     Gets(String), // get seconds
     Geth(String), // get hours
@@ -29,9 +27,7 @@ pub async fn run() -> Result<()> {
     let tracker = SessionTracker::new(db_url.as_str()).await?;
 
     match action {
-        Actions::Reset => tracker.clear_all_sessions().await?,
         Actions::Detach => tracker.detach_from_all_sessions().await?,
-        Actions::GetAll => tracker.print_all_sessions_total_attached_time().await?,
         Actions::Attach(s) => tracker.attach_to_session(s.as_str()).await?,
         Actions::Gets(s) => println!(
             "Total Attached Time: {} s",
@@ -40,7 +36,7 @@ pub async fn run() -> Result<()> {
                 .await?
         ),
         Actions::Geth(s) => println!(
-            "Total Attached Time: {} s",
+            "Total Attached Time: {} h",
             tracker.get_total_session_time_in_hours(s.as_str()).await?
         ),
     }
@@ -76,8 +72,6 @@ impl Actions {
         let action = args.get(1).ok_or(anyhow!(USAGE_MESSAGE))?;
         match action.as_str() {
             "detach" => Ok(Actions::Detach),
-            "reset" => Ok(Actions::Reset),
-            "getall" => Ok(Actions::GetAll),
             _ => {
                 let session = args.get(2).ok_or(anyhow!(USAGE_MESSAGE))?;
                 match action.as_str() {
