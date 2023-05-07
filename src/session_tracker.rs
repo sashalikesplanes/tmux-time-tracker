@@ -14,11 +14,13 @@ pub struct SessionTracker {
 
 impl SessionTracker {
     /// Setups the database connection, and creates the database if it does not exist
-    pub async fn new(db_url: &str) -> Result<Self> {
-        if !Sqlite::database_exists(db_url).await.unwrap_or(false) {
-            Sqlite::create_database(db_url).await?
+    pub async fn new(home_path: &str) -> Result<Self> {
+        let db_url = format!("sqlite://{home_path}/tmux.db");
+
+        if !Sqlite::database_exists(db_url.as_str()).await.unwrap_or(false) {
+            Sqlite::create_database(db_url.as_str()).await?
         }
-        let pool = SqlitePool::connect(db_url).await?;
+        let pool = SqlitePool::connect(db_url.as_str()).await?;
 
         sqlx::migrate!().run(&pool).await?;
 

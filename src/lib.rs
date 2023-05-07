@@ -4,12 +4,14 @@
 //! Allows for tracking the time spent attached to Tmux session
 use anyhow::{anyhow, bail, Result};
 use dirs;
+use sqlx::types::chrono;
 use std::{env, path::PathBuf};
 use tokio::fs;
 pub mod session_tracker;
 pub use session_tracker::SessionTracker;
 
 /// Represents all valid actions with which the program can get invoked
+#[derive(Debug)]
 enum Actions {
     Detach,
     Attach(String),
@@ -19,14 +21,16 @@ enum Actions {
 
 /// Executes the program
 pub async fn run() -> Result<()> {
+    let home_path = get_home_path().await?;
+    setup_logger(&home_path)?;
+
     // Parse CLI args
     let args: Vec<String> = env::args().collect();
     let action = Actions::new(&args)?;
 
-    let db_url = get_db_url().await?;
-    let tracker = SessionTracker::new(db_url.as_str()).await?;
+    let tracker = SessionTracker::new(&home_path).await?;
 
-    match action {
+    match &action {
         Actions::Detach => tracker.detach_from_all_sessions().await?,
         Actions::Attach(s) => tracker.attach_to_session(s.as_str()).await?,
         Actions::Gets(s) => println!(
@@ -41,12 +45,12 @@ pub async fn run() -> Result<()> {
         ),
     }
 
+    log::info!("tmux-time-tracker ran succesfully for {:?}", action);
     Ok(())
 }
 
-/// Ensures that the db storage location is available
-/// Returns the db connection URL
-async fn get_db_url() -> Result<String> {
+/// Ensures that the home directory is setup and returns it
+async fn get_home_path() -> Result<String> {
     // The env var is used for the dev database
     let home_dir = dirs::home_dir().expect("Home directory should be available");
     let mut config_dir = PathBuf::from(home_dir);
@@ -56,10 +60,27 @@ async fn get_db_url() -> Result<String> {
         fs::create_dir_all(&config_dir).await?;
     }
 
-    Ok("sqlite://".to_owned() + config_dir.to_str().expect("Config dir should exist") + "/tmux.db")
+    Ok(config_dir.to_str().ok_or(anyhow!("Failed to parse path into a &str"))?.to_owned())
 }
 
+fn setup_logger(home_path: &str) -> Result<()> {
+    fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{} [{}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .chain(fern::log_file(format!("{home_path}/output.log"))?)
+        .apply()?;
 
+    Ok(())
+}
+
+/// Determines the current Action based on CLI arguments
 impl Actions {
     /// Determines the current Action based on CLI arguments
     ///

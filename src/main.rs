@@ -2,6 +2,11 @@ use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tmux_time_tracker::run().await?;
-    Ok(())
+    match tmux_time_tracker::run().await {
+        Ok(_) => Ok(()),
+        Err(err) => { 
+            log::error!("Error executing tmux-time-tracker {err}");
+            Err(err)
+        }
+    }
 }
