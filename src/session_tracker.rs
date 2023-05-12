@@ -4,7 +4,7 @@
 //! access to a sqlite database along with methods
 //! for manipulating the database
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 
 /// A Struct holding a connection pool for a Sqlite db
@@ -84,15 +84,36 @@ impl SessionTracker {
             session_name
         )
         .fetch_optional(&self.pool)
-        .await?.ok_or(anyhow!("No entry for session name"))?;
+        .await?;
 
-        Ok(record.time_attached.unwrap_or(0))
+        match record {
+            None => return Ok(0),
+            Some(record) => Ok(record.time_attached.unwrap_or(0)),
+        }
     }
 
     /// Gets the total time in hours that the session has been attached to today
-    pub async fn get_today_session_time_in_hours(&self, session_name: &str) -> Result<i64> {
+    pub async fn get_daily_session_time_in_hours(&self, session_name: &str) -> Result<i64> {
         let total_attached_time_in_seconds =
             self.get_today_session_time_in_seconds(session_name).await?;
         Ok(total_attached_time_in_seconds / (60 * 60))
+    }
+
+    pub async fn get_weekly_session_time_in_hours(&self, session_name: &str) -> Result<i32> {
+        let record = sqlx::query!(
+            r#"
+            SELECT sum(time_attached) / 60 / 60 as total_attached_time
+                FROM previous_session_times
+                WHERE session_name = ? AND day >= date('now', 'weekday 0', '-7 day');
+            "#,
+            session_name
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match record {
+            None => return Ok(0),
+            Some(record) => Ok(record.total_attached_time.unwrap_or(0)),
+        }
     }
 }

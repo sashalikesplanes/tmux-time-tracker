@@ -53,9 +53,15 @@ async fn attach_to_session_and_display_session_time(
 ) -> Result<()> {
     tracker.attach_to_session(session).await?;
 
-    let session_time = tracker.get_today_session_time_in_hours(session).await?;
+    let daily_session_time = tracker.get_daily_session_time_in_hours(session).await?;
+    let weekly_session_time = tracker.get_weekly_session_time_in_hours(session).await?;
     display_tmux_msg(
-        &format!("Attached to: {} today for {}h", session, session_time),
+        &format!(
+            "Attached to: {} today for {}h, this week for {}h",
+            session,
+            daily_session_time,
+            weekly_session_time
+        ),
         MESSAGE_TIMEOUT,
     )?;
 
